@@ -26,6 +26,7 @@ The MCP servers in this demo highlight how each tool can light up widgets by com
 - `pizzaz_server_node/` – MCP server implemented with the official TypeScript SDK.
 - `pizzaz_server_python/` – Python MCP server that returns the Pizzaz widgets.
 - `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
+- `video_comment_analyzer_server_python/` – Python MCP server for analyzing YouTube video comments.
 - `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
 
 ## Prerequisites
@@ -76,6 +77,7 @@ The repository ships several demo MCP servers that highlight different widget bu
 
 - **Pizzaz (Node & Python)** – pizza-inspired collection of tools and components
 - **Solar system (Python)** – 3D solar system viewer
+- **Video Comment Analyzer (Python)** – YouTube video comment analysis tool
 
 Every tool response includes plain text content, structured JSON, and `_meta.openai/outputTemplate` metadata so the Apps SDK can hydrate the matching widget.
 
@@ -103,6 +105,25 @@ source .venv/bin/activate
 pip install -r solar-system_server_python/requirements.txt
 uvicorn solar-system_server_python.main:app --port 8000
 ```
+
+### Video Comment Analyzer Python server
+
+このサーバーを使用するには、YouTube Data API キーが必要です。
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r video_comment_analyzer_server_python/requirements.txt
+
+# API キーを設定
+export YOUTUBE_API_KEY="your_youtube_api_key"
+
+uvicorn video_comment_analyzer_server_python.main:app --port 8003
+```
+
+**Note**: 分析はChatGPT自身が行うため、OpenAI APIキーは不要です。
+
+詳細なセットアップ方法は `video_comment_analyzer_server_python/README.md` を参照してください。
 
 You can reuse the same virtual environment for all Python servers—install the dependencies once and run whichever entry point you need.
 
