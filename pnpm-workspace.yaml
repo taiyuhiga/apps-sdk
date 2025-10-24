@@ -1,2 +1,4 @@
 packages:
   - pizzaz_server_node
+  - video_comment_analyzer_server_python
+  - video_emotion_analyzer_server_python

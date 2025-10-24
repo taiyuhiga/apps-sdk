@@ -27,6 +27,7 @@ The MCP servers in this demo highlight how each tool can light up widgets by com
 - `pizzaz_server_python/` – Python MCP server that returns the Pizzaz widgets.
 - `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
 - `video_comment_analyzer_server_python/` – Python MCP server for analyzing YouTube video comments.
+- `video_emotion_analyzer_server_python/` – Python MCP server that combines Gemini transcription and YouTube comments for viewer emotion analysis.
 - `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
 
 ## Prerequisites
@@ -124,6 +125,28 @@ uvicorn video_comment_analyzer_server_python.main:app --port 8003
 **Note**: 分析はChatGPT自身が行うため、OpenAI APIキーは不要です。
 
 詳細なセットアップ方法は `video_comment_analyzer_server_python/README.md` を参照してください。
+
+### Video Emotion Analyzer Python server
+
+このサーバーは、Gemini APIを使用してYouTube動画の文字起こしを生成し、YouTube Data APIで取得したコメントと合わせて、視聴者感情分析のための3段階プロンプトを提供します。
+
+必要なAPIキー：
+- **GOOGLE_API_KEY**: Gemini API（YouTube URL文字起こし機能用）
+- **YOUTUBE_API_KEY**: YouTube Data API
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r video_emotion_analyzer_server_python/requirements.txt
+
+# APIキーはvideo_emotion_analyzer_server_python/.envに設定済み
+uvicorn video_emotion_analyzer_server_python.main:app --port 8004
+```
+
+**Note**: 
+- Geminiの文字起こし機能はプレビュー版です。
+- 分析はChatGPT自身が3段階のプロンプトに従って実行します。
+- 詳細なセットアップ方法は `video_emotion_analyzer_server_python/README.md` を参照してください。
 
 You can reuse the same virtual environment for all Python servers—install the dependencies once and run whichever entry point you need.
 
