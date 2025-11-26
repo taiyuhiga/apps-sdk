@@ -1,7 +1,7 @@
 """Video Emotion Analyzer MCP server.
 
 This server provides tools to analyze YouTube videos through three sequential steps:
-1. Scenario Analysis - Transcribe video using Gemini 2.5 Flash with URL Context
+1. Scenario Analysis - Transcribe video using Gemini Video Understanding (YouTube URL direct)
 2. Comment Analysis - Fetch and analyze viewer comments
 3. Emotion Analysis - Synthesize insights from both analyses
 """
@@ -95,41 +95,40 @@ def extract_video_id(url: str) -> Optional[str]:
     return None
 
 
-def transcribe_youtube_with_url_context(video_url: str) -> str:
-    """Gemini 2.5 FlashのURL Context機能を使用してYouTube動画を文字起こしする"""
+def transcribe_youtube_with_video_understanding(video_url: str) -> str:
+    """Gemini Video Understanding機能を使用してYouTube動画を文字起こしする
+    
+    YouTube URLを直接Geminiに渡して動画を処理する。
+    yt-dlpやプロキシ不要で、Googleのサーバーが直接YouTubeにアクセスする。
+    """
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
     
     try:
-        # URL Contextを使用してYouTube動画を直接処理
-        prompt = """このYouTube動画の内容を日本語で文字起こししてください。
+        # Video Understanding: YouTube URLをfile_dataとして直接渡す
+        prompt = """この動画の内容を日本語で文字起こししてください。
 話者の発言をそのまま正確に書き起こしてください。
-タイムスタンプは不要です。発言内容のみを記載してください。
-動画の音声が聞き取れない場合や、動画にアクセスできない場合は、その旨を報告してください。"""
+タイムスタンプは不要です。発言内容のみを記載してください。"""
         
         response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=[
                 genai_types.Content(
                     parts=[
-                        genai_types.Part(text=prompt),
+                        genai_types.Part.from_uri(
+                            file_uri=video_url,
+                            mime_type="video/*"
+                        ),
+                        genai_types.Part.from_text(text=prompt),
                     ]
                 )
-            ],
-            config=genai_types.GenerateContentConfig(
-                tools=[
-                    genai_types.Tool(
-                        url_context=genai_types.UrlContext()
-                    )
-                ],
-                system_instruction=f"以下のYouTube動画を分析してください: {video_url}"
-            )
+            ]
         )
         
         return response.text
         
     except Exception as e:
-        raise Exception(f"Geminiでの文字起こし中にエラーが発生しました: {str(e)}")
+        raise Exception(f"Gemini Video Understandingでの文字起こし中にエラーが発生しました: {str(e)}")
 
 
 def get_youtube_comments(video_id: str, max_results: int = 1000) -> List[Dict[str, Any]]:
@@ -241,7 +240,7 @@ async def _list_tools() -> List[types.Tool]:
         types.Tool(
             name="analyze-scenario",
             title="動画文字起こし",
-            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini 2.5 FlashのURL Context機能を使用して動画の文字起こしを行い、文字起こしデータのみを返します。",
+            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini Video Understanding機能を使用してYouTube動画を直接分析し、文字起こしデータを返します。",
             inputSchema=SCENARIO_TOOL_SCHEMA,
             annotations={
                 "destructiveHint": False,
@@ -275,7 +274,7 @@ async def _list_tools() -> List[types.Tool]:
 
 
 def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
-    """シナリオ分析を処理する - Gemini 2.5 FlashのURL Context機能で文字起こしを行い、文字起こしデータのみを返す"""
+    """シナリオ分析を処理する - Gemini Video Understanding機能で文字起こしを行い、文字起こしデータのみを返す"""
     try:
         payload = ScenarioAnalysisInput.model_validate(arguments)
     except ValidationError as exc:
@@ -296,8 +295,8 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
         )
     
     try:
-        # Gemini 2.5 FlashのURL Context機能で文字起こしを実行
-        transcript_text = transcribe_youtube_with_url_context(payload.video_url)
+        # Gemini Video Understanding機能で文字起こしを実行（YouTube URLを直接渡す）
+        transcript_text = transcribe_youtube_with_video_understanding(payload.video_url)
         
         # 文字起こしデータのみを返す
         result_text = f"""# 📝 YouTube動画文字起こしデータ
@@ -305,7 +304,7 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
 ## 📊 基本情報
 - **動画URL**: {payload.video_url}
 - **動画ID**: `{video_id}`
-- **文字起こしエンジン**: Gemini 2.5 Flash (URL Context)
+- **文字起こしエンジン**: Gemini Video Understanding
 
 ---
 
