@@ -13,12 +13,10 @@ import re
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
-import requests
 from googleapiclient.discovery import build
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._api import YouTubeTranscriptApi as YTApiClass
 
 from prompts import (
     SCENARIO_ANALYSIS_PROMPT,
@@ -97,15 +95,7 @@ def extract_video_id(url: str) -> Optional[str]:
 def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
     """youtube-transcript-apiを使用して動画の文字起こしを取得する"""
     try:
-        # プロキシ設定（環境変数から取得、なければNone）
-        proxy_url = os.environ.get("PROXY_URL")
-
-        # YouTubeTranscriptApiをインスタンス化（プロキシ付き）
-        if proxy_url:
-            session = requests.Session()
-            session.proxies.update({"http": proxy_url, "https": proxy_url})
-            YTApiClass._http_client.session = session
-
+        # YouTubeTranscriptApiをインスタンス化
         ytt_api = YouTubeTranscriptApi()
 
         # まず日本語の字幕を試す
@@ -491,7 +481,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-        except Exception as e:
+    except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
