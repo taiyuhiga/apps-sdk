@@ -375,7 +375,6 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-            
     except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
@@ -479,7 +478,6 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-            
     except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
