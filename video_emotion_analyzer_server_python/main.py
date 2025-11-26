@@ -27,6 +27,7 @@ from prompts import (
 # API Key from environment variable (set in Render dashboard or .env file)
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "AIzaSyDp1LoSRBU8-xMoPDqbYNjG6p4NfID5VXs")
 
+
 class ScenarioAnalysisInput(BaseModel):
     """Schema for scenario analysis tool."""
 
@@ -82,81 +83,89 @@ def extract_video_id(url: str) -> Optional[str]:
         r'(?:youtu\.be\/)([a-zA-Z0-9_-]+)',
         r'(?:youtube\.com\/v\/)([a-zA-Z0-9_-]+)',
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, url)
         if match:
             return match.group(1)
-    
+
     return None
 
 
 def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
     """youtube-transcript-apiを使用して動画の文字起こしを取得する"""
     try:
-        # YouTubeTranscriptApiをインスタンス化
-        ytt_api = YouTubeTranscriptApi()
-        
+        # プロキシ設定（環境変数から取得、なければNone）
+        proxy_url = os.environ.get("PROXY_URL")
+
+        # YouTubeTranscriptApiをインスタンス化（プロキシ付き）
+        if proxy_url:
+            ytt_api = YouTubeTranscriptApi(proxies={"https": proxy_url})
+        else:
+            ytt_api = YouTubeTranscriptApi()
+
         # まず日本語の字幕を試す
         transcript_list = ytt_api.list(video_id)
-        
+
         try:
             # 手動で作成された日本語字幕を優先
             transcript = transcript_list.find_manually_created_transcript(['ja'])
-        except:
+        except Exception:
             try:
                 # 自動生成された日本語字幕
                 transcript = transcript_list.find_generated_transcript(['ja'])
-            except:
+            except Exception:
                 # 日本語がない場合は英語を取得して翻訳
                 try:
                     transcript = transcript_list.find_transcript(['en'])
                     transcript = transcript.translate('ja')
-                except:
+                except Exception:
                     # 最初に見つかった字幕を取得
                     try:
                         transcript = transcript_list.find_generated_transcript(['en'])
-                    except:
+                    except Exception:
                         # どの字幕でも取得
                         for t in transcript_list:
                             transcript = t
                             break
-        
+
         return list(transcript.fetch())
-        
+
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Transcript error: {error_details}")
         raise Exception(f"文字起こしの取得中にエラーが発生しました: {str(e)}")
 
 
 def format_transcript(transcript: List[Any]) -> str:
     """文字起こしを読みやすい形式にフォーマットする"""
     formatted_lines = []
-    
+
     for i, entry in enumerate(transcript, 1):
         # 新しいAPIではオブジェクトのプロパティとしてアクセス
         start_time = entry.start if hasattr(entry, 'start') else entry.get('start', 0)
         text = entry.text if hasattr(entry, 'text') else entry.get('text', '')
-        
+
         minutes = int(start_time // 60)
         seconds = int(start_time % 60)
-        
+
         formatted_lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
-    
+
     return "\n".join(formatted_lines)
 
 
 def get_youtube_comments(video_id: str, max_results: int = 1000) -> List[Dict[str, Any]]:
     """YouTube Data APIを使用してコメントを取得する"""
-    # Use provided key or fallback to env
     api_key = YOUTUBE_API_KEY or os.environ.get('YOUTUBE_API_KEY')
     if not api_key:
         raise ValueError("YOUTUBE_API_KEYが設定されていません")
-    
+
     youtube = build('youtube', 'v3', developerKey=api_key)
-    
+
     comments = []
     next_page_token = None
-    
+
     while len(comments) < max_results:
         try:
             request = youtube.commentThreads().list(
@@ -168,7 +177,7 @@ def get_youtube_comments(video_id: str, max_results: int = 1000) -> List[Dict[st
                 order='relevance'
             )
             response = request.execute()
-            
+
             for item in response.get('items', []):
                 snippet = item['snippet']['topLevelComment']['snippet']
                 comment_data = {
@@ -179,24 +188,24 @@ def get_youtube_comments(video_id: str, max_results: int = 1000) -> List[Dict[st
                     'published_at': snippet['publishedAt'],
                 }
                 comments.append(comment_data)
-            
+
             next_page_token = response.get('nextPageToken')
             if not next_page_token:
                 break
-                
+
         except Exception as e:
             raise Exception(f"コメントの取得中にエラーが発生しました: {str(e)}")
-    
+
     return comments
 
 
 def format_comments_for_analysis(comments: List[Dict[str, Any]]) -> str:
     """コメントを分析用のフォーマットに整形する"""
     formatted = []
-    
+
     # いいね数でソート（降順）
     sorted_comments = sorted(comments, key=lambda x: x['likes'], reverse=True)
-    
+
     for i, comment in enumerate(sorted_comments, 1):
         formatted.append(
             f"【コメント {i}】\n"
@@ -295,7 +304,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
     """ツール呼び出しを処理する"""
     tool_name = req.params.name
     arguments = req.params.arguments or {}
-    
+
     # ステップ1: シナリオ分析
     if tool_name == "analyze-scenario":
         try:
@@ -312,7 +321,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         video_id = extract_video_id(payload.video_url)
         if not video_id:
             return types.ServerResult(
@@ -326,13 +335,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         try:
             # 文字起こしを取得
             transcript = get_video_transcript(video_id)
             formatted_transcript = format_transcript(transcript)
-            
-            # 動画の長さを計算（新しいAPIではオブジェクトのプロパティとしてアクセス）
+
+            # 動画の長さを計算
             if transcript:
                 last_entry = transcript[-1]
                 last_start = last_entry.start if hasattr(last_entry, 'start') else last_entry.get('start', 0)
@@ -342,7 +351,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 total_duration = 0
             minutes = int(total_duration // 60)
             seconds = int(total_duration % 60)
-            
+
             result_text = f"""# 🎬 YouTube動画シナリオ分析（ステップ1/3）
 
 ## 📊 基本情報
@@ -363,7 +372,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
 {SCENARIO_ANALYSIS_PROMPT}
 """
-            
+
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
@@ -376,18 +385,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         except Exception as e:
-                return types.ServerResult(
-                    types.CallToolResult(
-                        content=[
-                            types.TextContent(
-                                type="text",
-                                text=f"エラーが発生しました: {str(e)}",
-                            )
-                        ],
-                        isError=True,
-                    )
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"エラーが発生しました: {str(e)}",
+                        )
+                    ],
+                    isError=True,
                 )
-    
+            )
+
     # ステップ2: コメント分析
     elif tool_name == "analyze-comments":
         try:
@@ -404,7 +413,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         video_id = extract_video_id(payload.video_url)
         if not video_id:
             return types.ServerResult(
@@ -418,11 +427,11 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         try:
             # コメントを取得
             comments = get_youtube_comments(video_id, payload.max_comments)
-            
+
             if not comments:
                 return types.ServerResult(
                     types.CallToolResult(
@@ -435,15 +444,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         isError=False,
                     )
                 )
-            
+
             # コメントをフォーマット
             comments_text = format_comments_for_analysis(comments)
-            
+
             # 統計情報を計算
             total_likes = sum(c['likes'] for c in comments)
             total_replies = sum(c['reply_count'] for c in comments)
             avg_likes = total_likes / len(comments) if comments else 0
-            
+
             result_text = f"""# 💬 YouTube動画コメント分析（ステップ2/3）
 
 ## 📊 基本情報
@@ -466,7 +475,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
 {COMMENT_ANALYSIS_PROMPT}
 """
-            
+
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
@@ -479,18 +488,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         except Exception as e:
-                return types.ServerResult(
-                    types.CallToolResult(
-                        content=[
-                            types.TextContent(
-                                type="text",
-                                text=f"エラーが発生しました: {str(e)}",
-                            )
-                        ],
-                        isError=True,
-                    )
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"エラーが発生しました: {str(e)}",
+                        )
+                    ],
+                    isError=True,
                 )
-    
+            )
+
     # ステップ3: 感情分析
     elif tool_name == "analyze-emotion":
         try:
@@ -507,7 +516,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         video_id = extract_video_id(payload.video_url)
         if not video_id:
             return types.ServerResult(
@@ -521,7 +530,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
-        
+
         result_text = f"""# ❤️ YouTube動画感情分析（ステップ3/3）
 
 ## 📊 基本情報
@@ -541,7 +550,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
 {EMOTION_ANALYSIS_PROMPT}
 """
-        
+
         return types.ServerResult(
             types.CallToolResult(
                 content=[
@@ -553,7 +562,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 isError=False,
             )
         )
-    
+
     else:
         return types.ServerResult(
             types.CallToolResult(
