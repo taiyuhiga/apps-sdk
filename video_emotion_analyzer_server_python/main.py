@@ -13,6 +13,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
+import requests
 from googleapiclient.discovery import build
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -481,7 +482,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-    except Exception as e:
+        except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
