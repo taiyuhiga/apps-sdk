@@ -1,10 +1,5 @@
 FROM python:3.11-slim
 
-# FFmpegをインストール
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 # 作業ディレクトリを設定
 WORKDIR /app
 

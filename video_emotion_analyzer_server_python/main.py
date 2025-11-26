@@ -1,7 +1,7 @@
 """Video Emotion Analyzer MCP server.
 
 This server provides tools to analyze YouTube videos through three sequential steps:
-1. Scenario Analysis - Transcribe video using Gemini 2.5 Flash-Lite
+1. Scenario Analysis - Transcribe video using Gemini 2.5 Flash with URL Context
 2. Comment Analysis - Fetch and analyze viewer comments
 3. Emotion Analysis - Synthesize insights from both analyses
 """
@@ -10,16 +10,14 @@ from __future__ import annotations
 
 import os
 import re
-import tempfile
-import time
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
 from googleapiclient.discovery import build
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-import google.generativeai as genai
-import yt_dlp
+from google import genai
+from google.genai import types as genai_types
 
 from prompts import (
     COMMENT_ANALYSIS_PROMPT,
@@ -30,9 +28,8 @@ from prompts import (
 YOUTUBE_API_KEY = "AIzaSyDp1LoSRBU8-xMoPDqbYNjG6p4NfID5VXs"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBRJ-342UGbJH9h52XDdXTwmzG22BOuQs8")
 
-# Configure Gemini API
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Configure Gemini API Client
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 class ScenarioAnalysisInput(BaseModel):
     """Schema for scenario analysis tool."""
@@ -98,87 +95,41 @@ def extract_video_id(url: str) -> Optional[str]:
     return None
 
 
-def download_youtube_audio(video_url: str) -> str:
-    """yt-dlpを使用してYouTube動画の音声をダウンロードする"""
-    temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, "audio.mp3")
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'outtmpl': os.path.join(temp_dir, 'audio.%(ext)s'),
-        'quiet': True,
-        'no_warnings': True,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-        return output_path
-    except Exception as e:
-        raise Exception(f"音声のダウンロード中にエラーが発生しました: {str(e)}")
-
-
-def transcribe_with_gemini(audio_path: str) -> str:
-    """Gemini 2.5 Flash-Liteを使用して音声を文字起こしする"""
+def transcribe_youtube_with_url_context(video_url: str) -> str:
+    """Gemini 2.5 FlashのURL Context機能を使用してYouTube動画を文字起こしする"""
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
     
     try:
-        # 音声ファイルをアップロード
-        audio_file = genai.upload_file(audio_path)
-        
-        # ファイルの処理完了を待つ
-        while audio_file.state.name == "PROCESSING":
-            time.sleep(2)
-            audio_file = genai.get_file(audio_file.name)
-        
-        if audio_file.state.name == "FAILED":
-            raise Exception("ファイルの処理に失敗しました")
-        
-        # Gemini 2.5 Flash-Liteモデルを使用
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
-        
-        # 文字起こしを依頼（シンプルなプロンプト）
-        prompt = """この音声の内容を日本語で文字起こししてください。
+        # URL Contextを使用してYouTube動画を直接処理
+        prompt = """このYouTube動画の内容を日本語で文字起こししてください。
 話者の発言をそのまま正確に書き起こしてください。
-タイムスタンプは不要です。発言内容のみを記載してください。"""
+タイムスタンプは不要です。発言内容のみを記載してください。
+動画の音声が聞き取れない場合や、動画にアクセスできない場合は、その旨を報告してください。"""
         
-        response = model.generate_content([prompt, audio_file])
-        
-        # アップロードしたファイルを削除
-        genai.delete_file(audio_file.name)
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                genai_types.Content(
+                    parts=[
+                        genai_types.Part(text=prompt),
+                    ]
+                )
+            ],
+            config=genai_types.GenerateContentConfig(
+                tools=[
+                    genai_types.Tool(
+                        url_context=genai_types.UrlContext()
+                    )
+                ],
+                system_instruction=f"以下のYouTube動画を分析してください: {video_url}"
+            )
+        )
         
         return response.text
         
     except Exception as e:
         raise Exception(f"Geminiでの文字起こし中にエラーが発生しました: {str(e)}")
-
-
-def get_video_transcript_with_gemini(video_url: str) -> str:
-    """YouTube動画をダウンロードしてGeminiで文字起こしする"""
-    audio_path = None
-    try:
-        # 音声をダウンロード
-        audio_path = download_youtube_audio(video_url)
-        
-        # Geminiで文字起こし
-        transcript = transcribe_with_gemini(audio_path)
-        
-        return transcript
-        
-    finally:
-        # 一時ファイルを削除
-        if audio_path and os.path.exists(audio_path):
-            os.remove(audio_path)
-            # 親ディレクトリも削除
-            parent_dir = os.path.dirname(audio_path)
-            if os.path.exists(parent_dir):
-                os.rmdir(parent_dir)
 
 
 def get_youtube_comments(video_id: str, max_results: int = 1000) -> List[Dict[str, Any]]:
@@ -290,7 +241,7 @@ async def _list_tools() -> List[types.Tool]:
         types.Tool(
             name="analyze-scenario",
             title="動画文字起こし",
-            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini 2.5 Flash-Liteを使用して動画の文字起こしを行い、文字起こしデータのみを返します。",
+            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini 2.5 FlashのURL Context機能を使用して動画の文字起こしを行い、文字起こしデータのみを返します。",
             inputSchema=SCENARIO_TOOL_SCHEMA,
             annotations={
                 "destructiveHint": False,
@@ -324,7 +275,7 @@ async def _list_tools() -> List[types.Tool]:
 
 
 def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
-    """シナリオ分析を処理する - Gemini 2.5 Flash-Liteで文字起こしを行い、文字起こしデータのみを返す"""
+    """シナリオ分析を処理する - Gemini 2.5 FlashのURL Context機能で文字起こしを行い、文字起こしデータのみを返す"""
     try:
         payload = ScenarioAnalysisInput.model_validate(arguments)
     except ValidationError as exc:
@@ -345,8 +296,8 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
         )
     
     try:
-        # Gemini 2.5 Flash-Liteで文字起こしを実行
-        transcript_text = get_video_transcript_with_gemini(payload.video_url)
+        # Gemini 2.5 FlashのURL Context機能で文字起こしを実行
+        transcript_text = transcribe_youtube_with_url_context(payload.video_url)
         
         # 文字起こしデータのみを返す
         result_text = f"""# 📝 YouTube動画文字起こしデータ
@@ -354,7 +305,7 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
 ## 📊 基本情報
 - **動画URL**: {payload.video_url}
 - **動画ID**: `{video_id}`
-- **文字起こしエンジン**: Gemini 2.5 Flash-Lite
+- **文字起こしエンジン**: Gemini 2.5 Flash (URL Context)
 
 ---
 
