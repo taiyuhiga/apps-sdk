@@ -124,7 +124,7 @@ def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
         
         return list(transcript.fetch())
         
-    except Exception as e:
+        except Exception as e:
         raise Exception(f"文字起こしの取得中にエラーが発生しました: {str(e)}")
 
 
@@ -375,7 +375,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-    except Exception as e:
+        except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
@@ -478,7 +478,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=False,
                 )
             )
-    except Exception as e:
+        except Exception as e:
             return types.ServerResult(
                 types.CallToolResult(
                     content=[
