@@ -124,7 +124,7 @@ def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
         
         return list(transcript.fetch())
         
-        except Exception as e:
+    except Exception as e:
         raise Exception(f"文字起こしの取得中にエラーが発生しました: {str(e)}")
 
 
@@ -376,17 +376,17 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         except Exception as e:
-            return types.ServerResult(
-                types.CallToolResult(
-                    content=[
-                        types.TextContent(
-                            type="text",
-                            text=f"エラーが発生しました: {str(e)}",
-                        )
-                    ],
-                    isError=True,
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=f"エラーが発生しました: {str(e)}",
+                            )
+                        ],
+                        isError=True,
+                    )
                 )
-            )
     
     # ステップ2: コメント分析
     elif tool_name == "analyze-comments":
@@ -479,17 +479,17 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
         except Exception as e:
-            return types.ServerResult(
-                types.CallToolResult(
-                    content=[
-                        types.TextContent(
-                            type="text",
-                            text=f"エラーが発生しました: {str(e)}",
-                        )
-                    ],
-                    isError=True,
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=f"エラーが発生しました: {str(e)}",
+                            )
+                        ],
+                        isError=True,
+                    )
                 )
-            )
     
     # ステップ3: 感情分析
     elif tool_name == "analyze-emotion":
