@@ -17,7 +17,8 @@ import requests
 from googleapiclient.discovery import build
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from youtube_transcript_api import YouTubeTranscriptApi, _default_http_client
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._api import YouTubeTranscriptApi as YTApiClass
 
 from prompts import (
     SCENARIO_ANALYSIS_PROMPT,
@@ -103,7 +104,7 @@ def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
         if proxy_url:
             session = requests.Session()
             session.proxies.update({"http": proxy_url, "https": proxy_url})
-            _default_http_client.session = session
+            YTApiClass._http_client.session = session
 
         ytt_api = YouTubeTranscriptApi()
 
