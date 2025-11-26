@@ -13,10 +13,11 @@ import re
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
+import requests
 from googleapiclient.discovery import build
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, _default_http_client
 
 from prompts import (
     SCENARIO_ANALYSIS_PROMPT,
@@ -100,9 +101,11 @@ def get_video_transcript(video_id: str) -> List[Dict[str, Any]]:
 
         # YouTubeTranscriptApiをインスタンス化（プロキシ付き）
         if proxy_url:
-            ytt_api = YouTubeTranscriptApi(proxies={"https": proxy_url})
-        else:
-            ytt_api = YouTubeTranscriptApi()
+            session = requests.Session()
+            session.proxies.update({"http": proxy_url, "https": proxy_url})
+            _default_http_client.session = session
+
+        ytt_api = YouTubeTranscriptApi()
 
         # まず日本語の字幕を試す
         transcript_list = ytt_api.list(video_id)
