@@ -20,6 +20,7 @@ from google import genai
 from google.genai import types as genai_types
 
 from prompts import (
+    SCENARIO_ANALYSIS_PROMPT,
     COMMENT_ANALYSIS_PROMPT,
     EMOTION_ANALYSIS_PROMPT,
 )
@@ -239,8 +240,8 @@ async def _list_tools() -> List[types.Tool]:
     return [
         types.Tool(
             name="analyze-scenario",
-            title="動画文字起こし",
-            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini Video Understanding機能を使用してYouTube動画を直接分析し、文字起こしデータを返します。",
+            title="シナリオ分析",
+            description="ユーザーがYouTube動画のURLを送信したときに呼び出します。Gemini Video Understanding機能を使用してYouTube動画を直接分析し、文字起こしとシナリオ分析指示を返します。",
             inputSchema=SCENARIO_TOOL_SCHEMA,
             annotations={
                 "destructiveHint": False,
@@ -298,8 +299,8 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
         # Gemini Video Understanding機能で文字起こしを実行（YouTube URLを直接渡す）
         transcript_text = transcribe_youtube_with_video_understanding(payload.video_url)
         
-        # 文字起こしデータのみを返す
-        result_text = f"""# 📝 YouTube動画文字起こしデータ
+        # 文字起こしデータと分析指示を返す
+        result_text = f"""# 🎬 YouTube動画シナリオ分析（ステップ1/3）
 
 ## 📊 基本情報
 - **動画URL**: {payload.video_url}
@@ -311,6 +312,12 @@ def handle_scenario_analysis(arguments: dict) -> types.ServerResult:
 ## 📝 文字起こし内容
 
 {transcript_text}
+
+---
+
+## 📋 シナリオ分析指示
+
+{SCENARIO_ANALYSIS_PROMPT}
 """
         
         return types.ServerResult(
